@@ -127,8 +127,27 @@ public struct FileIO {
     /// - returns: A `200 OK` response containing the file stream and appropriate headers.
     public func chunkedResponse(file: String, for req: HTTPRequest, chunkSize: Int = NonBlockingFileIO.defaultChunkSize) -> HTTPResponse {
         // Get file attributes for this file.
+
+        func resolve(file: String) -> (String, [FileAttributeKey : Any])? {
+            guard let attributes = try? FileManager.default.attributesOfItem(atPath: file),
+            let type = attributes[.type] as? FileAttributeType else {
+                return nil
+            }
+            if type == .typeRegular {
+                return (file, attributes)
+            }
+            else if type == .typeSymbolicLink {
+                let newName = URL(fileURLWithPath: file, isDirectory: false).resolvingSymlinksInPath().path
+                if let attributes = try? FileManager.default.attributesOfItem(atPath: newName),
+                let type = attributes[.type] as? FileAttributeType, type == .typeRegular {
+                    return (newName, attributes)
+                }
+            }
+            return nil
+        }
+
         guard
-            let attributes = try? FileManager.default.attributesOfItem(atPath: file),
+            let (resolvedFile, attributes) = resolve(file: file),
             let modifiedAt = attributes[.modificationDate] as? Date,
             let fileSize = attributes[.size] as? NSNumber
         else {
@@ -159,7 +178,7 @@ public struct FileIO {
             res.contentType = type
         }
 
-        res.body = chunkedStream(file: file).convertToHTTPBody()
+        res.body = chunkedStream(file: resolvedFile).convertToHTTPBody()
         return res
     }
 
