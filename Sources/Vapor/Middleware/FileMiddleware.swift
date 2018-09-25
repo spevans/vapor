@@ -36,12 +36,27 @@ public final class FileMiddleware: Middleware, ServiceType {
         }
 
         // create absolute file path
-        let filePath = publicDirectory + path
+        var filePath = publicDirectory + path
 
         // check if file exists and is not a directory
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: filePath, isDirectory: &isDir), !isDir.boolValue else {
+
+        guard FileManager.default.fileExists(atPath: filePath, isDirectory: &isDir)  else {
             return try next.respond(to: req)
+        }
+
+        if isDir.boolValue {
+            let fullPath = req.http.url.absoluteString
+            if !fullPath.hasSuffix("/") {
+                let location = fullPath + "/"
+                let response = req.redirect(to: location, type: .permanent)
+                return req.eventLoop.newSucceededFuture(result: response)
+            }
+
+            filePath += "/index.html"
+            guard FileManager.default.fileExists(atPath: filePath, isDirectory: &isDir), !isDir.boolValue else {
+                return try next.respond(to: req)
+            }
         }
 
         // stream the file
